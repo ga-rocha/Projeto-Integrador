@@ -26,7 +26,7 @@ app.secret_key = config.SECRET_KEY
 app.config["MAIL_SERVER"] = "smtp.gmail.com"
 app.config["MAIL_PORT"] = 587
 app.config["MAIL_USE_TLS"] = True
-app.config["MAIL_USERNAME"] = "seuemail@gmail.com"  # Trocar
+app.config["MAIL_USERNAME"] = "@gmail.com"  # Trocar
 app.config["MAIL_PASSWORD"] = "suasenha"            # Trocar
 app.config["MAIL_DEFAULT_SENDER"] = "seuemail@gmail.com"
 
@@ -42,11 +42,6 @@ conn_str_local = (
     "DATABASE=SistemaAltasdePaciente_Gabriel_Rocha_Melo_RA_026823;"
     "UID=sa;PWD=unifai2022"
 )
-
-# Validação senha com regex
-def senha_valida(senha):
-    regex = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$'
-    return re.match(regex, senha)
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -64,9 +59,9 @@ def login():
             if senha == senha_correta:
                 return redirect(url_for("dashboard"))
             else:
-                flash("Usuário ou senha incorretos", "error")
+                flash("Usuário ou senha incorretos.", "error")
         else:
-            flash("Usuário ou senha incorretos", "error")
+            flash("Usuário ou senha incorretos.", "error")
 
     return render_template("login.html")
 
@@ -82,10 +77,6 @@ def login():
         #         flash("Usuário não registrado. Clique em 'Registre-se' para criar uma nova conta.", "danger")
         #         return redirect(url_for("login"))
         # return render_template("login.html")
-
-def senha_valida(senha):
-    regex = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$'
-    return re.match(regex, senha)
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -104,6 +95,18 @@ def register():
         with pyodbc.connect(conn_str_local) as conn:
             cursor = conn.cursor()
 
+            # Verifica se login já existe
+            cursor.execute("SELECT COUNT(*) FROM Usuarios WHERE login = ?", (usuario,))
+            if cursor.fetchone()[0] > 0:
+                flash("Esse nome de usuário já está em uso. Escolha outro.", "error")
+                return redirect("/register")
+
+            # Verifica se email já existe
+            cursor.execute("SELECT COUNT(*) FROM Usuarios WHERE email = ?", (email,))
+            if cursor.fetchone()[0] > 0:
+                flash("Esse email já está cadastrado. Use outro.", "error")
+                return redirect("/register")
+
             # Verifica se especialidade já existe
             cursor.execute("SELECT id_especialidade FROM Especialidade WHERE nome = ?", (especialidade_nome,))
             esp = cursor.fetchone()
@@ -115,6 +118,11 @@ def register():
                 id_esp = (max_id or 0) + 1
                 cursor.execute("INSERT INTO Especialidade (id_especialidade, nome) VALUES (?, ?)", (id_esp, especialidade_nome))
 
+            # Valida senha
+            if not re.match(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$', senha):
+                flash("A senha deve ter pelo menos 8 caracteres, incluindo letras maiúsculas, minúsculas, números e símbolos.", "error")
+                return redirect("/register")
+
             # Insere profissional
             cursor.execute("SELECT MAX(id_profissional) FROM Profissional_da_Saude")
             max_prof = cursor.fetchone()[0]
@@ -124,11 +132,12 @@ def register():
                 VALUES (?, ?, ?, ?)
             """, (id_prof, nome, registro, id_esp))
 
-            # Insere usuário
-            cursor.execute("INSERT INTO Usuarios (login, senha) VALUES (?, ?)", (usuario, senha))
+            # Insere usuário com email
+            cursor.execute("INSERT INTO Usuarios (login, senha, email) VALUES (?, ?, ?)", (usuario, senha, email))
 
             conn.commit()
-            flash("Usuário registrado com sucesso!", "success")
+            session.pop("admin_logado", None)
+            flash("Usuário registrado com sucesso.", "success")
             return redirect("/login")
 
     return render_template("register.html")
@@ -187,7 +196,7 @@ def reset_password():
 
         with pyodbc.connect(conn_str_local) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM Profissional_da_Saude WHERE nome = ? OR email = ?", (entrada, entrada))
+            cursor.execute("SELECT COUNT(*) FROM Usuarios WHERE login = ? OR email = ?", (entrada, entrada))
             if cursor.fetchone()[0] == 0:
                 flash("Usuário ou email não registrado.", "danger")
                 return render_template("reset_password.html")
